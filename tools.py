@@ -1,34 +1,10 @@
-from langchain_core.runnables.base import RunnableSequence
-from langchain.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-import requests
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import os
 
 # Load environment variables from .env file
 load_dotenv()
-
-def scrape_restaurants(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    
-    # Extract restaurant details
-    restaurants = []
-    for restaurant in soup.select('.listing_title'):
-        name = restaurant.text.strip()
-        link = "https://www.tripadvisor.com" + restaurant.a['href']
-        restaurants.append(f"{name}: {link}")
-    
-    # Return the data as a string
-    return "\n".join(restaurants)
-
-# Create the scraping tool
-scraping_tool = Tool(
-    name="RestaurantScraper",
-    func=scrape_restaurants,
-    description="Tool for scraping Indian restaurant information from Brussels TripAdvisor page."
-)
 
 # Initialize the LLM with your API key (ensure you have set it in your .env file)
 llm = ChatOpenAI(
@@ -37,12 +13,41 @@ llm = ChatOpenAI(
     openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# Create the RunnableSequence
-chain = RunnableSequence(
-    scraping_tool, llm
-)
+# Text template for the conversation
+text_template = """
+    Chat history: 
+    {chat_history}
+You are an assistant, you will give suggestions to users about Indian restaurants in Brussels, Belgium.
+"""
 
-# Example usage
-url = "https://www.tripadvisor.com/Restaurants-g188644-c24-oa30-Brussels.html"
-scraped_data = chain.invoke(url)
-print(scraped_data)
+# Create a ChatPromptTemplate
+template = ChatPromptTemplate.from_messages([
+    ("system", text_template),
+    ("human", "{input}")
+])
+
+# Initialize chat history
+chat_history = ""
+
+# Start the conversation loop
+while True:
+    # Prompt the user to enter a query
+    user_query = input("Please enter your query (or type 'exit' to quit): ")
+    
+    # Exit the loop if the user types 'exit'
+    if user_query.lower() == "exit":
+        print("Exiting the chat. Goodbye!")
+        break
+
+    # Format the query using the template and include both the user input and chat history
+    formatted_query = template.format(input=user_query, chat_history=chat_history)
+
+    # Get the response from the LLM
+    response = llm.invoke(formatted_query)
+
+    # Print both the query and the response
+    print("User Query:", user_query)
+    print("LLM Response:", response)
+
+    # Update the chat history
+    chat_history += f"\nUser: {user_query}\nAssistant: {response}\n"
